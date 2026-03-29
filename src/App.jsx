@@ -1,516 +1,201 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  AlertTriangle,
-  CheckCircle2,
-  FileWarning,
-  LoaderCircle,
-  ShieldCheck,
-  Sparkles,
+  LayoutDashboard, FileText, Activity, AlertCircle, Users,
+  BarChart2, Settings, Layers
 } from 'lucide-react';
-import Navbar from './components/Navbar';
-import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
-import Chatbot from './components/Chatbot';
-import ReportCard from './components/ReportCard';
-import {
-  analyzePrescription,
-  askAssistant,
-  fetchAnalysisHistory,
-  loginUser,
-} from './lib/api';
-
-const emptyReport = {
-  medicines: [],
-  extractedText: '',
-  averageConfidence: 0,
-  safetyScore: 0,
-  riskLevel: 'Safe',
-  extractedCount: 0,
-  interactions: [],
-  dosageIssues: [],
-  patientRisks: [],
-  recommendations: [],
-  recommendationHighlight: '',
-  explanation: '',
-  source: '',
-};
-
-const starterPrompts = [
-  'Is this medicine safe?',
-  'Explain this risk',
-  'What is the confidence score?',
-];
+import { analyzePrescription, fetchAnalysisHistory } from './lib/api';
 
 function App() {
-  const [theme, setTheme] = useState('light');
-  const [currentView, setCurrentView] = useState('landing');
-  const [userName, setUserName] = useState('');
-  const [draftName, setDraftName] = useState('');
-  const [sessionId, setSessionId] = useState('');
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [currentView, setCurrentView] = useState('dashboard');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisError, setAnalysisError] = useState('');
-  const [toast, setToast] = useState('');
-  const [uploadedFile, setUploadedFile] = useState(null);
-  const [analysisStage, setAnalysisStage] = useState(0);
+  const [reportData, setReportData] = useState(null);
   const [historyItems, setHistoryItems] = useState([]);
-  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState(null);
+
   const [patientDetails, setPatientDetails] = useState({
-    age: '67',
-    conditions: 'Hypertension, Gastric ulcer history',
-    allergies: 'Penicillin',
+    name: 'Arjun Mehta',
+    id: 'PT-2024-00847',
+    age: '64',
+    weight: '72',
+    allergies: 'Penicillin, NSAIDs',
+    conditions: 'Type 2 Diabetes, Hypertension, CKD Stage 2'
   });
-  const [reportData, setReportData] = useState(emptyReport);
-  const [medicines, setMedicines] = useState([]);
 
-  useEffect(() => {
-    if (currentView !== 'analysis' || !isAnalyzing) {
-      return undefined;
-    }
-
-    const stageTimers = [
-      window.setTimeout(() => setAnalysisStage(1), 350),
-      window.setTimeout(() => setAnalysisStage(2), 980),
-      window.setTimeout(() => setAnalysisStage(3), 1550),
-    ];
-
-    return () => stageTimers.forEach((timer) => window.clearTimeout(timer));
-  }, [currentView, isAnalyzing]);
-
-  const averageConfidence = useMemo(() => {
-    if (medicines.length === 0) {
-      return reportData.averageConfidence || 0;
-    }
-
-    return Math.round(
-      medicines.reduce((sum, medicine) => sum + medicine.confidence, 0) / medicines.length
-    );
-  }, [medicines, reportData.averageConfidence]);
-
-  const showToast = (message) => {
-    setToast(message);
-    window.clearTimeout(showToast.timeoutId);
-    showToast.timeoutId = window.setTimeout(() => setToast(''), 2800);
-  };
-
-  const loadHistory = async (name) => {
-    if (!name) {
-      setHistoryItems([]);
-      return;
-    }
-
+  const loadHistory = async (autoMock = false) => {
     try {
-      setIsHistoryLoading(true);
-      const response = await fetchAnalysisHistory(name);
-      setHistoryItems(response.items || []);
-    } catch (error) {
-      showToast(error.message || 'Unable to load report history.');
-    } finally {
-      setIsHistoryLoading(false);
+      const response = await fetchAnalysisHistory('DemoUser');
+      const items = response.items || [];
+      setHistoryItems(items);
+
+      if (items.length > 0) {
+        setReportData(prev => {
+          if (!prev) {
+            const latest = items[0];
+            setTimeout(() => {
+              setPatientDetails({
+                name: 'Arjun Mehta',
+                id: 'PT-2024-00847',
+                age: latest.patientAge || '64',
+                weight: '72',
+                allergies: latest.patientAllergies || 'Penicillin, NSAIDs',
+                conditions: latest.patientConditions || 'Type 2 Diabetes, Hypertension, CKD Stage 2'
+              });
+            }, 0);
+            return latest.report;
+          }
+          return prev;
+        });
+      } else if (autoMock) {
+        if (typeof window !== 'undefined') {
+          setTimeout(() => {
+            const btn = document.querySelector('.btn-analyze');
+            if (btn) btn.click();
+          }, 500);
+        }
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
   useEffect(() => {
-    loadHistory(userName);
-  }, [userName]);
+    loadHistory(true);
+  }, []);
 
-  const handleLogin = async () => {
-    const safeName = draftName.trim();
-    if (!safeName) {
-      showToast('Please enter your name to continue.');
-      return;
-    }
-
-    try {
-      setIsLoggingIn(true);
-      const response = await loginUser(safeName);
-      setUserName(response.name);
-      setSessionId(response.sessionId);
-      setCurrentView('dashboard');
-      showToast(response.welcomeMessage);
-    } catch (error) {
-      showToast(error.message || 'Unable to log in right now.');
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
-
-  const handleAnalyze = async ({ text, file }) => {
-    setAnalysisError('');
-    setAnalysisStage(0);
-    setCurrentView('analysis');
+  const handleAnalyze = async (payload) => {
     setIsAnalyzing(true);
-
     try {
       const response = await analyzePrescription({
-        prescriptionText: text,
-        file: file || uploadedFile,
-        patientDetails,
-        sessionId,
-        userName,
+        prescriptionText: payload.text || "",
+        file: uploadedFile || null,
+        patientDetails: {
+          age: patientDetails.age,
+          conditions: patientDetails.conditions,
+          allergies: patientDetails.allergies
+        },
+        sessionId: "demo-session",
+        userName: "DemoUser"
       });
-
-      setUploadedFile(file || uploadedFile);
-      setMedicines(response.medicines || []);
       setReportData(response);
-      loadHistory(userName);
-      setCurrentView('report');
-      showToast('Prescription analysis completed.');
-    } catch (error) {
-      setAnalysisError(
-        error.message ||
-          'Extraction failed. Please upload an image, PDF, or paste prescription text.'
-      );
-      setMedicines([]);
-      setReportData(emptyReport);
+      loadHistory();
+    } catch (err) {
+      console.error(err);
+      alert(err.message || 'Failed to analyze prescription');
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  const handleMedicineEdit = (id, value) => {
-    setMedicines((current) =>
-      current.map((medicine) =>
-        medicine.id === id ? { ...medicine, editable: value } : medicine
-      )
-    );
+  const loadHistoricalReport = (item) => {
+    if (item.report) {
+      setReportData(item.report);
+      setPatientDetails({
+        name: 'Arjun Mehta',
+        id: 'PT-2024-00847',
+        age: item.patientAge || patientDetails.age,
+        weight: patientDetails.weight,
+        allergies: item.patientAllergies || patientDetails.allergies,
+        conditions: item.patientConditions || patientDetails.conditions
+      });
+      setCurrentView('dashboard'); // jump back if they load history from another view
+    }
   };
 
-  const handleTryAgain = () => {
-    setAnalysisError('');
-    setCurrentView('dashboard');
-  };
+  const navWorkspace = [
+    { id: 'dashboard', icon: <LayoutDashboard size={18} />, label: 'Dashboard' },
+    { id: 'upload', icon: <FileText size={18} />, label: 'Prescription Upload' },
+    { id: 'reports', icon: <Activity size={18} />, label: 'Safety Reports' },
+    { id: 'db', icon: <AlertCircle size={18} />, label: 'Interaction DB' },
+    { id: 'patients', icon: <Users size={18} />, label: 'Patients' },
+  ];
 
-  const handleAssistantPrompt = async (message) => {
-    const response = await askAssistant({
-      message,
-      report: {
-        ...reportData,
-        averageConfidence,
-        medicines,
-      },
-    });
-
-    return response.reply;
-  };
-
-  const riskClassName =
-    reportData.riskLevel === 'High'
-      ? 'high'
-      : reportData.riskLevel === 'Moderate'
-        ? 'moderate'
-        : 'safe';
-
-  const displayFileName = uploadedFile?.name || '';
-
-  const openHistoryReport = (item) => {
-    setReportData(item.report);
-    setMedicines(item.report.medicines || []);
-    setPatientDetails({
-      age: item.patientAge || '',
-      conditions: item.patientConditions || '',
-      allergies: item.patientAllergies || '',
-    });
-    setCurrentView('report');
-    showToast('Loaded a saved analysis report.');
-  };
+  const navAnalytics = [
+    { id: 'risk', icon: <BarChart2 size={18} />, label: 'Risk Analytics' },
+    { id: 'logs', icon: <Activity size={18} />, label: 'Audit Logs' },
+  ];
 
   return (
-    <div className={`app-shell theme-${theme}`}>
-      <Navbar
-        theme={theme}
-        onToggleTheme={() => setTheme((current) => (current === 'light' ? 'dark' : 'light'))}
-        onNavigate={setCurrentView}
-        currentView={currentView}
-      />
-
-      {currentView === 'landing' && (
-        <LandingPage
-          onAnalyzeClick={() => setCurrentView('welcome')}
-          onGetStarted={() => setCurrentView('welcome')}
-        />
-      )}
-
-      {currentView === 'welcome' && (
-        <section className="welcome-screen page-section">
-          <div className="floating-particles" aria-hidden="true">
-            {Array.from({ length: 12 }).map((_, index) => (
-              <span
-                key={index}
-                className={`particle particle-${(index % 4) + 1}`}
-                style={{
-                  left: `${8 + index * 7}%`,
-                  animationDelay: `${index * 0.5}s`,
-                }}
-              />
-            ))}
+    <div className="app-container">
+      {/* SIDEBAR */}
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          <div className="logo-icon">
+            <Layers size={20} strokeWidth={2.5} />
           </div>
+          <span className="sidebar-title">MedSentinel AI</span>
+        </div>
 
-          <div className="welcome-card glass-card">
-            <div className="welcome-badge">
-              <Sparkles size={16} />
-              Friendly secure onboarding
-            </div>
-            <h1>Welcome to MedSentinel AI</h1>
-            <p>Enter your name to begin your prescription safety review.</p>
-
-            <label className="field-label" htmlFor="name-input">
-              Your name
-            </label>
-            <input
-              id="name-input"
-              className="text-input"
-              value={draftName}
-              onChange={(event) => setDraftName(event.target.value)}
-              placeholder="Dr. Maya / Priya / Alex"
-            />
-
-            <button className="primary-button" onClick={handleLogin} disabled={isLoggingIn}>
-              {isLoggingIn ? (
-                <>
-                  <LoaderCircle size={18} className="spin-icon" />
-                  Connecting...
-                </>
-              ) : (
-                'Continue to dashboard'
-              )}
+        <div className="nav-section">
+          <div className="nav-heading">WORKSPACE</div>
+          {navWorkspace.map(item => (
+            <button
+              key={item.id}
+              className={`nav-item ${currentView === item.id ? 'active' : ''}`}
+              onClick={() => setCurrentView(item.id)}
+            >
+              {item.icon} {item.label}
             </button>
+          ))}
+        </div>
 
-            {userName && (
-              <p className="welcome-message">
-                Hello {userName}, let&apos;s ensure your prescription is safe 💙
-              </p>
-            )}
-          </div>
-        </section>
-      )}
-
-      {currentView === 'dashboard' && (
-        <Dashboard
-          userName={userName}
-          patientDetails={patientDetails}
-          onPatientDetailsChange={setPatientDetails}
-          onAnalyze={handleAnalyze}
-          onFileUpload={setUploadedFile}
-          uploadedFileName={displayFileName}
-          historyItems={historyItems}
-          isHistoryLoading={isHistoryLoading}
-          onOpenHistory={openHistoryReport}
-        />
-      )}
-
-      {currentView === 'analysis' && (
-        <section className="page-section analysis-screen">
-          <div className="analysis-panel glass-card">
-            <div className="analysis-spinner" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </div>
-            <p className="eyebrow">Live AI extraction</p>
-            <h2>Analyzing prescription using AI...</h2>
-            <p>
-              Running OCR, interaction checks, dosage validation, and patient-specific
-              safety rules.
-            </p>
-
-            {displayFileName && <div className="file-chip">Source: {displayFileName}</div>}
-
-            {isAnalyzing && (
-              <>
-                <div className="scan-preview">
-                  <div className="scan-frame">
-                    <div className="scan-placeholder shimmer-block">
-                      <span>{displayFileName || 'Prescription text input'}</span>
-                      <div className="scan-line" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="thinking-dots" aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
-                </div>
-
-                <div className="analysis-steps">
-                  <div className={analysisStage >= 1 ? 'analysis-step visible' : 'analysis-step'}>
-                    <strong>Medicines detected</strong>
-                    <div className="inline-medicine-list">
-                      <div className="mini-pill">Parsing prescription text</div>
-                      <div className="mini-pill">Reading patient profile</div>
-                    </div>
-                  </div>
-
-                  <div className={analysisStage >= 2 ? 'analysis-step visible' : 'analysis-step'}>
-                    <strong>Risk summary</strong>
-                    <p>Checking interactions, dosage issues, and patient-specific risks.</p>
-                  </div>
-
-                  <div className={analysisStage >= 3 ? 'analysis-step visible' : 'analysis-step'}>
-                    <strong>AI recommendation</strong>
-                    <p>Generating safer alternatives and explainable warning details.</p>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {analysisError && (
-              <div className="error-banner">
-                <FileWarning size={18} />
-                <span>{analysisError}</span>
-              </div>
-            )}
-
-            {analysisError && (
-              <button className="secondary-button" onClick={handleTryAgain}>
-                Return to dashboard
-              </button>
-            )}
-          </div>
-        </section>
-      )}
-
-      {currentView === 'report' && (
-        <section className="page-section report-screen">
-          <div className="report-header">
-            <div>
-              <p className="eyebrow">Safety report</p>
-              <h1>Prescription Risk Overview</h1>
-              <p className="subtle-text">
-                Review extracted medicines, confidence scores, warnings, and safer
-                alternatives.
-              </p>
-            </div>
-            <button className="primary-button" onClick={() => setCurrentView('dashboard')}>
-              Analyze another prescription
+        <div className="nav-section">
+          <div className="nav-heading">ANALYTICS</div>
+          {navAnalytics.map(item => (
+            <button
+              key={item.id}
+              className={`nav-item ${currentView === item.id ? 'active' : ''}`}
+              onClick={() => setCurrentView(item.id)}
+            >
+              {item.icon} {item.label}
             </button>
+          ))}
+        </div>
+
+        <div className="nav-bottom">
+          <button
+            className={`nav-item ${currentView === 'settings' ? 'active' : ''}`}
+            onClick={() => setCurrentView('settings')}
+          >
+            <Settings size={18} /> Settings
+          </button>
+        </div>
+      </aside>
+
+      {/* MAIN CONTENT */}
+      <main className="main-content">
+        <div className="top-bar">
+          <div></div>
+          <div className="header-actions">
+            <div className="status-pill">
+              <div className="status-dot"></div> System Active
+            </div>
+            <div className="user-avatar">DR</div>
           </div>
+        </div>
 
-          <div className="report-grid">
-            <div className="glass-card score-card">
-              <div
-                className="score-ring"
-                style={{
-                  background: `conic-gradient(var(--accent-blue) ${
-                    reportData.safetyScore * 3.6
-                  }deg, rgba(148, 163, 184, 0.18) 0deg)`,
-                }}
-              >
-                <div className="score-ring-inner">
-                  <strong>{reportData.safetyScore}</strong>
-                  <span>Safety Score</span>
-                </div>
-              </div>
-
-              <div className={`risk-chip ${riskClassName}`}>{reportData.riskLevel} Risk</div>
-              <div className="stats-row">
-                <div>
-                  <strong>{medicines.length}</strong>
-                  <span>Medicines detected</span>
-                </div>
-                <div>
-                  <strong>{averageConfidence}%</strong>
-                  <span>OCR confidence avg</span>
-                </div>
-              </div>
+        {currentView === 'dashboard' ? (
+          <Dashboard
+            patientDetails={patientDetails}
+            onPatientDetailsChange={setPatientDetails}
+            onAnalyze={handleAnalyze}
+            isAnalyzing={isAnalyzing}
+            reportData={reportData}
+            historyItems={historyItems}
+            uploadedFile={uploadedFile}
+            setUploadedFile={setUploadedFile}
+            onLoadHistory={loadHistoricalReport}
+          />
+        ) : (
+          <div className="dashboard-wrapper" style={{ alignItems: 'center', justifyContent: 'center' }}>
+            <div className="card" style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)', width: '100%', maxWidth: '500px' }}>
+              <Activity size={48} style={{ opacity: 0.2, marginBottom: '16px' }} />
+              <h3 style={{ color: 'var(--text-primary)', marginBottom: '8px' }}>Module not ready</h3>
+              <p>The {currentView.replace('-', ' ')} interface is coming in a future update.</p>
             </div>
-
-            <div className="glass-card medicine-card">
-              <div className="card-title-row">
-                <h3>Extracted Medicines</h3>
-                <span className="status-badge">
-                  <ShieldCheck size={16} />
-                  Editable list
-                </span>
-              </div>
-
-              {medicines.length ? (
-                <div className="medicine-edit-list">
-                  {medicines.map((medicine) => (
-                    <div className="medicine-edit-item" key={medicine.id}>
-                      <input
-                        className="text-input"
-                        value={medicine.editable}
-                        onChange={(event) =>
-                          handleMedicineEdit(medicine.id, event.target.value)
-                        }
-                      />
-                      <span className="confidence-chip">{medicine.confidence}% confidence</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="error-banner">
-                  <AlertTriangle size={18} />
-                  <span>No medicines extracted. Please retry with a clearer file.</span>
-                </div>
-              )}
-            </div>
-
-            <ReportCard
-              title="Drug Interactions"
-              icon={<AlertTriangle size={18} />}
-              items={reportData.interactions}
-            />
-            <ReportCard
-              title="Dosage Issues"
-              icon={<FileWarning size={18} />}
-              items={reportData.dosageIssues}
-            />
-            <ReportCard
-              title="Patient-specific Risks"
-              icon={<CheckCircle2 size={18} />}
-              items={reportData.patientRisks}
-            />
-
-            <div className="glass-card recommendation-card">
-              <div className="card-title-row">
-                <h3>AI Recommendations</h3>
-                <span className="status-badge">
-                  <Sparkles size={16} />
-                  Safer options
-                </span>
-              </div>
-              <div className="recommendation-list">
-                {reportData.recommendations.map((item) => (
-                  <div key={item} className="recommendation-item">
-                    {item}
-                  </div>
-                ))}
-              </div>
-              {reportData.recommendationHighlight && (
-                <div className="recommendation-highlight">
-                  {reportData.recommendationHighlight}
-                </div>
-              )}
-            </div>
-
-            <details className="glass-card explain-card">
-              <summary>Why this warning?</summary>
-              <p>{reportData.explanation}</p>
-              <p className="subtle-text">
-                Extraction source:{' '}
-                {reportData.source === 'direct-text'
-                  ? 'manual text'
-                  : reportData.source === 'text-file'
-                    ? 'text file'
-                    : reportData.source === 'image-ocr'
-                      ? 'image OCR'
-                      : reportData.source === 'pdf-text'
-                        ? 'PDF text extraction'
-                        : reportData.source === 'pdf-ocr'
-                          ? 'scanned PDF OCR'
-                          : 'uploaded file'}
-              </p>
-            </details>
           </div>
-        </section>
-      )}
-
-      <Chatbot prompts={starterPrompts} onPrompt={handleAssistantPrompt} />
-
-      {toast && <div className="toast">{toast}</div>}
+        )}
+      </main>
     </div>
   );
 }
