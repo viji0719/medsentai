@@ -107,3 +107,5 @@ export const askAssistant = (payload) => postJson('/api/chat', payload);
 
 export const fetchAnalysisHistory = (name) =>
   getJson(`/api/history?name=${encodeURIComponent(name)}`);
+
+export const fetchMedications = () => getJson('/api/medications');
