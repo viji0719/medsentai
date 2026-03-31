@@ -4,6 +4,9 @@ import {
   BarChart2, Settings, Layers
 } from 'lucide-react';
 import Dashboard from './components/Dashboard';
+import PrescriptionUpload from './components/PrescriptionUpload';
+import SafetyReports from './components/SafetyReports';
+import InteractionDB from './components/InteractionDB';
 import { analyzePrescription, fetchAnalysisHistory } from './lib/api';
 
 function App() {
@@ -66,11 +69,14 @@ function App() {
   const handleAnalyze = async (payload) => {
     setIsAnalyzing(true);
     try {
+      const activeFile = payload.file || uploadedFile || null;
+      
       const response = await analyzePrescription({
-        prescriptionText: payload.text || "",
-        file: uploadedFile || null,
+        prescriptionText: payload.text || payload.notes || "",
+        file: activeFile,
         patientDetails: {
-          age: patientDetails.age,
+          age: payload.patientDetails?.age || patientDetails.age,
+          name: payload.patientDetails?.name || patientDetails.name,
           conditions: patientDetails.conditions,
           allergies: patientDetails.allergies
         },
@@ -186,6 +192,20 @@ function App() {
             setUploadedFile={setUploadedFile}
             onLoadHistory={loadHistoricalReport}
           />
+        ) : currentView === 'upload' ? (
+          <PrescriptionUpload 
+            onAnalyze={handleAnalyze}
+            isAnalyzing={isAnalyzing}
+            setUploadedFile={setUploadedFile}
+            uploadedFile={uploadedFile}
+          />
+        ) : currentView === 'reports' ? (
+          <SafetyReports 
+            historyItems={historyItems}
+            onLoadHistory={loadHistoricalReport}
+          />
+        ) : currentView === 'db' ? (
+          <InteractionDB />
         ) : (
           <div className="dashboard-wrapper" style={{ alignItems: 'center', justifyContent: 'center' }}>
             <div className="card" style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)', width: '100%', maxWidth: '500px' }}>

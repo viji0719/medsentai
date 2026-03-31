@@ -35,6 +35,11 @@
   padding: 0;
 }
 
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background-color: var(--bg-app);
@@ -220,6 +225,19 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 32px;
+  flex: 1;
+  overflow-y: auto; /* Allow internal scrolling if content is too large, but keep app fixed */
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.dashboard-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.dashboard-wrapper {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
 }
 
 .dashboard-header-actions {
